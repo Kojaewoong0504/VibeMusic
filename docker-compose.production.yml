@@ -1,0 +1,297 @@
+# VibeMusic 프로덕션 환경 Docker Compose 설정
+# Production environment with security, monitoring, and high availability
+
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스 (프로덕션용)
+  db:
+    image: postgres:15-alpine
+    container_name: vibemusic-db-prod
+    restart: always
+    environment:
+      POSTGRES_DB: vibemusic_prod
+      POSTGRES_USER: vibemusic_prod
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibemusic_prod -d vibemusic_prod"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    secrets:
+      - db_password
+    networks:
+      - vibemusic-backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Redis 클러스터 (프로덕션용)
+  redis:
+    image: redis:7-alpine
+    container_name: vibemusic-redis-prod
+    restart: always
+    volumes:
+      - redis_prod_data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+    command: redis-server /etc/redis/redis.conf --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vibemusic-backend-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # 백엔드 API 서버 (프로덕션용)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        - BUILD_DATE=${BUILD_DATE}
+        - VCS_REF=${VCS_REF}
+        - VERSION=${VERSION}
+    container_name: vibemusic-api-prod
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vibemusic_prod:${DB_PASSWORD}@db:5432/vibemusic_prod
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - ENVIRONMENT=production
+    env_file:
+      - .env.production
+    volumes:
+      - prod_uploads:/app/uploads
+      - prod_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    networks:
+      - vibemusic-backend-network
+      - vibemusic-frontend-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # 프론트엔드 정적 서버 (프로덕션용)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        - BUILD_DATE=${BUILD_DATE}
+        - VCS_REF=${VCS_REF}
+        - VERSION=${VERSION}
+    container_name: vibemusic-frontend-prod
+    restart: always
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vibemusic-frontend-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Nginx 리버스 프록시 (프로덕션용)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: vibemusic-nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_webroot:/var/www/certbot
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vibemusic-frontend-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # SSL 인증서 관리 (Let's Encrypt)
+  certbot:
+    image: certbot/certbot:latest
+    container_name: vibemusic-certbot-prod
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - nginx_webroot:/var/www/certbot
+    command: >
+      sh -c "echo 'Certbot ready for SSL certificate management' &&
+             while :; do sleep 12h & wait $${!}; certbot renew; done"
+    depends_on:
+      - nginx
+    networks:
+      - vibemusic-frontend-network
+
+  # 메트릭 수집 (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vibemusic-prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - vibemusic-monitoring
+    profiles:
+      - monitoring
+
+  # 메트릭 시각화 (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vibemusic-grafana
+    restart: always
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+    networks:
+      - vibemusic-monitoring
+    profiles:
+      - monitoring
+
+  # 로그 수집 (Loki)
+  loki:
+    image: grafana/loki:latest
+    container_name: vibemusic-loki
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - vibemusic-monitoring
+    profiles:
+      - monitoring
+
+  # 백업 서비스
+  backup:
+    image: postgres:15-alpine
+    container_name: vibemusic-backup
+    restart: "no"
+    volumes:
+      - postgres_prod_data:/source:ro
+      - ./backup:/backup
+      - ./scripts/backup.sh:/backup.sh:ro
+    command: /backup.sh
+    depends_on:
+      - db
+    networks:
+      - vibemusic-backend-network
+    profiles:
+      - backup
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local
+  nginx_webroot:
+    driver: local
+  nginx_logs:
+    driver: local
+  prod_uploads:
+    driver: local
+  prod_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+
+networks:
+  vibemusic-frontend-network:
+    driver: bridge
+    name: vibemusic-frontend-prod
+  vibemusic-backend-network:
+    driver: bridge
+    name: vibemusic-backend-prod
+    internal: true  # 보안을 위해 내부 네트워크로 설정
+  vibemusic-monitoring:
+    driver: bridge
+    name: vibemusic-monitoring-prod
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt

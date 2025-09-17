@@ -1,0 +1,446 @@
+openapi: 3.0.3
+info:
+  title: VibeMusic API - 감정 기반 AI 음악 생성
+  description: 키보드 타이핑 패턴을 분석하여 감정을 캡처하고 AI 음악을 생성하는 API
+  version: 1.0.0
+  contact:
+    name: VibeMusic Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.vibemusic.app/v1
+    description: Production server
+  - url: http://localhost:8000/v1
+    description: Development server
+
+paths:
+  /sessions:
+    post:
+      summary: 새로운 사용자 세션 생성
+      description: 음악 생성을 위한 새로운 사용자 세션을 시작합니다
+      tags:
+        - Sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                consent_given:
+                  type: boolean
+                  description: 데이터 수집 동의 여부
+                auto_delete_hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 168
+                  default: 24
+                  description: 자동 삭제까지의 시간 (시간 단위)
+              required:
+                - consent_given
+      responses:
+        '201':
+          description: 세션 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                  session_token:
+                    type: string
+                    description: WebSocket 연결용 인증 토큰
+                  auto_delete_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: 잘못된 요청
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sessions/{session_id}:
+    get:
+      summary: 세션 정보 조회
+      tags:
+        - Sessions
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - SessionToken: []
+      responses:
+        '200':
+          description: 세션 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSession'
+
+  /sessions/{session_id}/analyze:
+    post:
+      summary: 타이핑 패턴 분석 요청
+      description: 캡처된 타이핑 패턴을 분석하여 감정 프로필을 생성합니다
+      tags:
+        - Analysis
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keystrokes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Keystroke'
+                  minItems: 10
+                text_content:
+                  type: string
+                  minLength: 10
+                  maxLength: 1000
+              required:
+                - keystrokes
+                - text_content
+      responses:
+        '200':
+          description: 분석 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pattern_id:
+                    type: string
+                    format: uuid
+                  emotion_profile:
+                    $ref: '#/components/schemas/EmotionProfile'
+        '400':
+          description: 분석 실패
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sessions/{session_id}/generate:
+    post:
+      summary: AI 음악 생성 요청
+      description: 텍스트 프롬프트와 감정 프로필을 기반으로 AI 음악을 생성합니다
+      tags:
+        - Generation
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - SessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text_prompt:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                emotion_profile_id:
+                  type: string
+                  format: uuid
+                generation_parameters:
+                  type: object
+                  properties:
+                    duration:
+                      type: integer
+                      minimum: 15
+                      maximum: 120
+                      default: 30
+                    format:
+                      type: string
+                      enum: [wav, mp3, flac]
+                      default: wav
+                    genre_hint:
+                      type: string
+                      maxLength: 50
+              required:
+                - text_prompt
+                - emotion_profile_id
+      responses:
+        '202':
+          description: 생성 요청 접수
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  music_id:
+                    type: string
+                    format: uuid
+                  estimated_completion_time:
+                    type: integer
+                    description: 예상 완료 시간 (초)
+        '400':
+          description: 요청 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sessions/{session_id}/music/{music_id}:
+    get:
+      summary: 생성된 음악 정보 조회
+      tags:
+        - Generation
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: music_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - SessionToken: []
+      responses:
+        '200':
+          description: 음악 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedMusic'
+        '202':
+          description: 생성 진행 중
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [generating]
+                  progress:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+
+  /sessions/{session_id}/music/{music_id}/download:
+    get:
+      summary: 생성된 음악 파일 다운로드
+      tags:
+        - Generation
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: music_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - SessionToken: []
+      responses:
+        '200':
+          description: 음악 파일
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            audio/flac:
+              schema:
+                type: string
+                format: binary
+
+components:
+  securitySchemes:
+    SessionToken:
+      type: http
+      scheme: bearer
+      description: 세션 생성 시 받은 토큰 사용
+
+  schemas:
+    Keystroke:
+      type: object
+      properties:
+        key:
+          type: string
+          description: 입력된 키
+        timestamp:
+          type: number
+          format: double
+          description: 타임스탬프 (밀리초)
+        duration:
+          type: number
+          format: double
+          description: 키를 누른 지속 시간 (밀리초)
+        type:
+          type: string
+          enum: [keydown, keyup]
+      required:
+        - key
+        - timestamp
+        - type
+
+    EmotionProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tempo_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        rhythm_consistency:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        pause_intensity:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        emotion_vector:
+          type: object
+          properties:
+            energy:
+              type: number
+              format: float
+              minimum: 0.0
+              maximum: 1.0
+            valence:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+            tension:
+              type: number
+              format: float
+              minimum: 0.0
+              maximum: 1.0
+            focus:
+              type: number
+              format: float
+              minimum: 0.0
+              maximum: 1.0
+        confidence_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        created_at:
+          type: string
+          format: date-time
+
+    GeneratedMusic:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_url:
+          type: string
+          format: uri
+        file_size:
+          type: integer
+          minimum: 0
+        duration:
+          type: integer
+          minimum: 0
+        format:
+          type: string
+          enum: [wav, mp3, flac]
+        sample_rate:
+          type: integer
+        generation_time:
+          type: number
+          format: float
+        quality_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+        status:
+          type: string
+          enum: [generating, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    UserSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, completed, abandoned]
+        start_time:
+          type: string
+          format: date-time
+        total_typing_time:
+          type: integer
+          minimum: 0
+        total_music_generated:
+          type: integer
+          minimum: 0
+        auto_delete_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: 오류 코드
+        message:
+          type: string
+          description: 오류 메시지
+        details:
+          type: object
+          description: 추가 오류 세부사항
+      required:
+        - error
+        - message

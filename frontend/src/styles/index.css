@@ -1,0 +1,411 @@
+/**
+ * VibeMusic Styles Entry Point
+ *
+ * 감정 기반 AI 음악 생성 서비스를 위한 스타일 시스템 메인 엔트리 포인트
+ * 모든 스타일 파일을 올바른 순서로 import하여 일관된 디자인 시스템을 제공
+ */
+
+/* ============================================================================
+   CSS Reset & Base Styles
+   ============================================================================ */
+
+/**
+ * Modern CSS Reset
+ * 브라우저 기본 스타일 초기화 및 표준화
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  /* 스크롤 동작 부드럽게 (접근성 고려) */
+  scroll-behavior: smooth;
+
+  /* 텍스트 렌더링 최적화 */
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1f2937;
+  background-color: #ffffff;
+
+  /* 최소 높이 보장 */
+  min-height: 100vh;
+
+  /* 텍스트 선택 스타일 */
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
+
+/* 텍스트 선택 색상 커스터마이징 */
+::selection {
+  background-color: rgba(124, 109, 255, 0.2);
+  color: #3d2494;
+}
+
+::-moz-selection {
+  background-color: rgba(124, 109, 255, 0.2);
+  color: #3d2494;
+}
+
+/**
+ * 기본 요소 스타일 정규화
+ */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.5em;
+  color: #111827;
+}
+
+h1 { font-size: 2.25rem; }
+h2 { font-size: 1.875rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+h5 { font-size: 1.125rem; }
+h6 { font-size: 1rem; }
+
+p {
+  margin-bottom: 1em;
+  color: #374151;
+}
+
+a {
+  color: #7c6dff;
+  text-decoration: none;
+  transition: color 0.15s ease-in-out;
+}
+
+a:hover {
+  color: #6b46f5;
+  text-decoration: underline;
+}
+
+ul, ol {
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+li {
+  margin-bottom: 0.25em;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* ============================================================================
+   Component Styles Import
+   ============================================================================ */
+
+/**
+ * 스타일 import 순서:
+ * 1. 컴포넌트 기본 스타일 (CSS 변수 정의 포함)
+ * 2. 접근성 스타일 (모든 컴포넌트에 적용되어야 함)
+ */
+
+/* 컴포넌트 기본 스타일 시스템 */
+@import './components.css';
+
+/* 접근성 가이드라인 및 스타일 */
+@import './accessibility.css';
+
+/* ============================================================================
+   Global Layout Styles
+   ============================================================================ */
+
+/**
+ * 컨테이너 클래스
+ */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--container-padding-xs, 1rem);
+  padding-right: var(--container-padding-xs, 1rem);
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+    padding-left: var(--container-padding-sm, 1.5rem);
+    padding-right: var(--container-padding-sm, 1.5rem);
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+    padding-left: var(--container-padding-md, 2rem);
+    padding-right: var(--container-padding-md, 2rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+    padding-left: var(--container-padding-lg, 2rem);
+    padding-right: var(--container-padding-lg, 2rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+    padding-left: var(--container-padding-xl, 2rem);
+    padding-right: var(--container-padding-xl, 2rem);
+  }
+}
+
+@media (min-width: 1536px) {
+  .container {
+    max-width: 1536px;
+    padding-left: var(--container-padding-2xl, 2rem);
+    padding-right: var(--container-padding-2xl, 2rem);
+  }
+}
+
+/**
+ * Flexbox 유틸리티
+ */
+.flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.items-end { align-items: flex-end; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.justify-start { justify-content: flex-start; }
+.justify-end { justify-content: flex-end; }
+
+/**
+ * Grid 유틸리티
+ */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+.gap-8 { gap: 2rem; }
+
+/**
+ * 간격 유틸리티
+ */
+.m-0 { margin: 0; }
+.m-1 { margin: 0.25rem; }
+.m-2 { margin: 0.5rem; }
+.m-3 { margin: 0.75rem; }
+.m-4 { margin: 1rem; }
+.m-6 { margin: 1.5rem; }
+.m-8 { margin: 2rem; }
+
+.p-0 { padding: 0; }
+.p-1 { padding: 0.25rem; }
+.p-2 { padding: 0.5rem; }
+.p-3 { padding: 0.75rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+
+.mt-0 { margin-top: 0; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+.mt-6 { margin-top: 1.5rem; }
+.mt-8 { margin-top: 2rem; }
+
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-3 { margin-bottom: 0.75rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-8 { margin-bottom: 2rem; }
+
+/**
+ * 텍스트 유틸리티
+ */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-base { font-size: 1rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+.text-2xl { font-size: 1.5rem; }
+
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+/**
+ * 위치 유틸리티
+ */
+.relative { position: relative; }
+.absolute { position: absolute; }
+.fixed { position: fixed; }
+.sticky { position: sticky; }
+
+/**
+ * 크기 유틸리티
+ */
+.w-full { width: 100%; }
+.w-auto { width: auto; }
+.h-full { height: 100%; }
+.h-auto { height: auto; }
+.h-screen { height: 100vh; }
+
+/**
+ * 표시/숨김 유틸리티
+ */
+.block { display: block; }
+.inline { display: inline; }
+.inline-block { display: inline-block; }
+.hidden { display: none; }
+
+/* 반응형 숨김/표시 */
+@media (max-width: 639px) {
+  .sm\\:hidden { display: none; }
+}
+
+@media (min-width: 640px) {
+  .sm\\:block { display: block; }
+  .sm\\:flex { display: flex; }
+}
+
+@media (min-width: 768px) {
+  .md\\:block { display: block; }
+  .md\\:flex { display: flex; }
+  .md\\:hidden { display: none; }
+}
+
+@media (min-width: 1024px) {
+  .lg\\:block { display: block; }
+  .lg\\:flex { display: flex; }
+  .lg\\:hidden { display: none; }
+}
+
+/* ============================================================================
+   VibeMusic-Specific Global Styles
+   ============================================================================ */
+
+/**
+ * 앱 래퍼 스타일
+ */
+#app,
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/**
+ * 메인 콘텐츠 영역
+ */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/**
+ * 로딩 상태를 위한 글로벌 스타일
+ */
+.loading {
+  pointer-events: none;
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/**
+ * 비활성 상태를 위한 글로벌 스타일
+ */
+.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/**
+ * 음악 생성 진행 중 상태를 위한 글로벌 스타일
+ */
+.generating {
+  position: relative;
+  overflow: hidden;
+}
+
+.generating::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(124, 109, 255, 0.2), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/**
+ * 다크 모드 지원 준비 (향후 구현)
+ */
+@media (prefers-color-scheme: dark) {
+  /* 다크 모드 스타일은 향후 T096에서 구현 예정 */
+}
+
+/**
+ * 고해상도 디스플레이 최적화
+ */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* 레티나 디스플레이를 위한 최적화 */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

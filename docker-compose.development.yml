@@ -1,0 +1,191 @@
+# VibeMusic 개발 환경 Docker Compose 설정
+# Development environment with hot reload and debugging enabled
+
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스 (개발용)
+  db:
+    image: postgres:15-alpine
+    container_name: vibemusic-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vibemusic_dev
+      POSTGRES_USER: vibemusic
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"  # 포트 변경으로 로컬 PostgreSQL과 충돌 방지
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibemusic -d vibemusic_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vibemusic-dev-network
+
+  # Redis 캐시 서버 (개발용)
+  redis:
+    image: redis:7-alpine
+    container_name: vibemusic-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # 포트 변경으로 로컬 Redis와 충돌 방지
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - vibemusic-dev-network
+
+  # 백엔드 API 서버 (개발용 - 핫 리로드)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: vibemusic-api-dev
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # 디버깅 포트
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - dev_uploads:/app/uploads
+      - dev_logs:/app/logs
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vibemusic:password@db:5432/vibemusic_dev
+      - REDIS_URL=redis://redis:6379/1
+      - DEBUG=True
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+      - PYTHONPATH=/app
+    env_file:
+      - .env.development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vibemusic-dev-network
+
+  # 프론트엔드 개발 서버 (핫 리로드)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: vibemusic-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true  # 파일 변경 감지 개선
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - vibemusic-dev-network
+
+  # 개발용 Nginx (선택적)
+  nginx-dev:
+    image: nginx:1.25-alpine
+    container_name: vibemusic-nginx-dev
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - vibemusic-dev-network
+    profiles:
+      - nginx
+
+  # MailHog (개발용 메일 서버)
+  mailhog:
+    image: mailhog/mailhog
+    container_name: vibemusic-mailhog-dev
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - vibemusic-dev-network
+    profiles:
+      - mail
+
+  # Redis Commander (Redis 관리 도구)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: vibemusic-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - vibemusic-dev-network
+    profiles:
+      - tools
+
+  # pgAdmin (PostgreSQL 관리 도구)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: vibemusic-pgadmin
+    ports:
+      - "8082:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@vibemusic.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    volumes:
+      - pgadmin_dev_data:/var/lib/pgadmin
+    depends_on:
+      - db
+    networks:
+      - vibemusic-dev-network
+    profiles:
+      - tools
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  pgadmin_dev_data:
+    driver: local
+  dev_uploads:
+    driver: local
+  dev_logs:
+    driver: local
+
+networks:
+  vibemusic-dev-network:
+    driver: bridge
+    name: vibemusic-dev-network

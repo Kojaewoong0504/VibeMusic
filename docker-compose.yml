@@ -1,0 +1,216 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스
+  db:
+    image: postgres:15-alpine
+    container_name: vibemusic-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vibemusic
+      POSTGRES_USER: vibemusic
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibemusic -d vibemusic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vibemusic-network
+
+  # Redis 캐시 서버
+  redis:
+    image: redis:7-alpine
+    container_name: vibemusic-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - vibemusic-network
+
+  # 백엔드 API 서버 (개발용)
+  api-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: vibemusic-api-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vibemusic:password@db:5432/vibemusic
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+      - ENVIRONMENT=development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vibemusic-network
+    profiles:
+      - development
+
+  # 백엔드 API 서버 (프로덕션용)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: vibemusic-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vibemusic:password@db:5432/vibemusic
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=False
+      - ENVIRONMENT=production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vibemusic-network
+    profiles:
+      - production
+
+  # 프론트엔드 개발 서버
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: vibemusic-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    depends_on:
+      - api-dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vibemusic-network
+    profiles:
+      - development
+
+  # 프론트엔드 정적 서버 (프로덕션용)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: vibemusic-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vibemusic-network
+    profiles:
+      - production
+
+  # Nginx 리버스 프록시 (프로덕션용)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: vibemusic-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Nginx 설정 파일
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL 인증서
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      # Let's Encrypt webroot (인증서 갱신용)
+      - nginx_webroot:/var/www/certbot
+      # 로그 볼륨
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - vibemusic-network
+    profiles:
+      - production
+
+  # Let's Encrypt 인증서 관리 (선택적)
+  certbot:
+    image: certbot/certbot:latest
+    container_name: vibemusic-certbot
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - nginx_webroot:/var/www/certbot
+    command: >
+      sh -c "echo 'Certbot container ready for SSL certificate management.
+              Use: docker-compose exec certbot certbot --help
+              Example: docker-compose exec certbot certbot certonly --webroot -w /var/www/certbot -d your-domain.com'
+              && tail -f /dev/null"
+    depends_on:
+      - nginx
+    networks:
+      - vibemusic-network
+    profiles:
+      - production
+      - ssl
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_webroot:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  vibemusic-network:
+    driver: bridge
+    name: vibemusic-network

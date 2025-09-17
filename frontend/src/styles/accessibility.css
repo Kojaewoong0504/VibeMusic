@@ -1,0 +1,674 @@
+/**
+ * VibeMusic Accessibility Styles
+ *
+ * WCAG 2.1 AA 준수를 위한 접근성 가이드라인 및 스타일
+ * 감정 기반 AI 음악 생성 서비스의 포용적 사용자 경험을 위한 접근성 최적화
+ */
+
+/* ============================================================================
+   Focus Management - 포커스 관리
+   ============================================================================ */
+
+/**
+ * 기본 포커스 스타일 재설정
+ * 브라우저 기본 outline 제거 후 커스텀 포커스 링 적용
+ */
+*:focus {
+  outline: none;
+}
+
+/**
+ * 포커스 가능한 모든 요소에 대한 공통 포커스 스타일
+ */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+[role="button"]:focus-visible,
+[role="link"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible {
+  outline: 2px solid #7c6dff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(124, 109, 255, 0.2);
+}
+
+/**
+ * 고대비 포커스 스타일 (고대비 모드 감지 시)
+ */
+@media (prefers-contrast: high) {
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  a:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 3px solid;
+    outline-offset: 2px;
+  }
+}
+
+/**
+ * 포커스 트랩 (모달, 드롭다운 등에서 사용)
+ */
+.focus-trap {
+  position: relative;
+}
+
+.focus-trap::before,
+.focus-trap::after {
+  content: '';
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Screen Reader Support - 스크린 리더 지원
+   ============================================================================ */
+
+/**
+ * 스크린 리더 전용 텍스트 (시각적으로 숨김, 스크린 리더는 읽음)
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/**
+ * 스크린 리더 전용 텍스트 (포커스 시에만 표시)
+ */
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: inherit;
+}
+
+/**
+ * 건너뛰기 링크 (키보드 사용자를 위한 네비게이션 건너뛰기)
+ */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  z-index: 1600;
+
+  padding: 8px 16px;
+  background-color: #7c6dff;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+
+  font-weight: 600;
+  font-size: 14px;
+
+  transition: top 0.3s ease;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* ============================================================================
+   Color & Contrast - 색상 및 대비
+   ============================================================================ */
+
+/**
+ * 고대비 모드 지원
+ */
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary-500: #5b38e0;
+    --color-primary-600: #4c2db8;
+    --color-neutral-600: #000000;
+    --color-neutral-400: #333333;
+  }
+
+  .btn--primary {
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #ffffff;
+  }
+
+  .btn--secondary {
+    background-color: #ffffff;
+    color: #000000;
+    border: 2px solid #000000;
+  }
+
+  .input {
+    border: 2px solid #000000;
+  }
+
+  .card {
+    border: 2px solid #000000;
+  }
+}
+
+/**
+ * 저대비 선호 모드 지원
+ */
+@media (prefers-contrast: low) {
+  .btn--primary {
+    background-color: #a5bbff;
+    color: #1f2937;
+  }
+
+  .input {
+    border-color: #d1d5db;
+  }
+}
+
+/**
+ * 컬러블라인드 사용자를 위한 패턴/텍스처 추가
+ */
+.emotion-indicator--energy-high::before {
+  content: "⚡";
+  margin-right: 4px;
+}
+
+.emotion-indicator--energy-low::before {
+  content: "💤";
+  margin-right: 4px;
+}
+
+.emotion-indicator--valence-positive::before {
+  content: "😊";
+  margin-right: 4px;
+}
+
+.emotion-indicator--valence-negative::before {
+  content: "😔";
+  margin-right: 4px;
+}
+
+/* ============================================================================
+   Motion & Animation - 모션 및 애니메이션 접근성
+   ============================================================================ */
+
+/**
+ * 모션 감소 선호 사용자를 위한 애니메이션 비활성화
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 스피너 애니메이션은 유지 (로딩 상태 표시를 위해 필요) */
+  .spinner {
+    animation: none;
+    border-top-color: transparent;
+    border-right-color: transparent;
+  }
+
+  .spinner::after {
+    content: "로딩 중...";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    color: var(--color-primary-500);
+  }
+}
+
+/**
+ * 강화된 모션 선호 사용자를 위한 추가 애니메이션
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .btn {
+    transition: all 0.2s ease-in-out;
+  }
+
+  .btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+  }
+
+  .music-controls .play-button:hover {
+    transform: scale(1.05);
+  }
+}
+
+/* ============================================================================
+   Typography & Readability - 타이포그래피 및 가독성
+   ============================================================================ */
+
+/**
+ * 읽기 난이도가 있는 사용자를 위한 폰트 최적화
+ */
+.dyslexia-friendly {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', cursive;
+  letter-spacing: 0.05em;
+  line-height: 1.6;
+  word-spacing: 0.1em;
+}
+
+/**
+ * 큰 텍스트 크기 선호 사용자 지원
+ */
+@media (prefers-font-size: large) {
+  body {
+    font-size: 18px;
+  }
+
+  .btn {
+    font-size: 18px;
+    padding: 12px 20px;
+    min-height: 48px;
+  }
+
+  .input {
+    font-size: 18px;
+    min-height: 48px;
+  }
+}
+
+/* ============================================================================
+   Touch & Interaction - 터치 및 상호작용 접근성
+   ============================================================================ */
+
+/**
+ * 터치 타겟 최소 크기 보장 (44x44px)
+ */
+button,
+input,
+textarea,
+select,
+a,
+[role="button"],
+[role="link"],
+[tabindex] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/**
+ * 터치 스타일 최적화
+ */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    padding: 12px 20px;
+    font-size: 16px;
+  }
+
+  .input {
+    padding: 12px 16px;
+    font-size: 16px; /* iOS 줌 방지 */
+  }
+
+  /* 터치 피드백 */
+  .btn:active {
+    transform: scale(0.98);
+    background-color: var(--color-primary-600);
+  }
+}
+
+/* ============================================================================
+   Audio & Music Accessibility - 오디오 및 음악 접근성
+   ============================================================================ */
+
+/**
+ * 음악 플레이어 접근성 향상
+ */
+.music-player {
+  position: relative;
+}
+
+/**
+ * 음량 조절을 위한 시각적 표시
+ */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-control::before {
+  content: "🔊";
+  font-size: 16px;
+}
+
+.volume-control[data-volume="muted"]::before {
+  content: "🔇";
+}
+
+.volume-control[data-volume="low"]::before {
+  content: "🔉";
+}
+
+/**
+ * 음악 생성 진행률을 위한 텍스트 설명
+ */
+.generation-progress[aria-label]::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+/**
+ * 타이핑 패턴 시각화를 위한 대체 텍스트
+ */
+.typing-visualization[role="img"]::after {
+  content: attr(aria-label);
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--color-neutral-600);
+  font-style: italic;
+}
+
+/* ============================================================================
+   Error & Status Messages - 오류 및 상태 메시지 접근성
+   ============================================================================ */
+
+/**
+ * 오류 메시지 강조 스타일
+ */
+.error-message,
+[role="alert"] {
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-left: 4px solid var(--color-error);
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-radius: 4px;
+}
+
+.error-message::before,
+[role="alert"]::before {
+  content: "⚠️ ";
+  font-weight: bold;
+}
+
+/**
+ * 성공 메시지 스타일
+ */
+.success-message,
+[role="status"][data-type="success"] {
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-left: 4px solid var(--color-success);
+  background-color: #d1fae5;
+  color: #065f46;
+  border-radius: 4px;
+}
+
+.success-message::before,
+[role="status"][data-type="success"]::before {
+  content: "✅ ";
+  font-weight: bold;
+}
+
+/**
+ * 정보 메시지 스타일
+ */
+.info-message,
+[role="status"][data-type="info"] {
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-left: 4px solid var(--color-info);
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+}
+
+.info-message::before,
+[role="status"][data-type="info"]::before {
+  content: "ℹ️ ";
+  font-weight: bold;
+}
+
+/* ============================================================================
+   Keyboard Navigation - 키보드 네비게이션
+   ============================================================================ */
+
+/**
+ * 키보드 네비게이션을 위한 포커스 표시 순서
+ */
+[tabindex="0"] {
+  position: relative;
+}
+
+/**
+ * 키보드 힌트 표시
+ */
+.keyboard-hint {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+[tabindex]:focus .keyboard-hint {
+  opacity: 1;
+}
+
+/**
+ * 드롭다운 메뉴 키보드 네비게이션
+ */
+.dropdown-menu {
+  position: relative;
+}
+
+.dropdown-menu[aria-expanded="true"] .dropdown-item:first-child {
+  background-color: var(--color-primary-50);
+}
+
+.dropdown-item:focus {
+  background-color: var(--color-primary-100);
+}
+
+/* ============================================================================
+   Print Styles - 인쇄 접근성
+   ============================================================================ */
+
+@media print {
+  .skip-link,
+  .sr-only,
+  .keyboard-hint {
+    display: none !important;
+  }
+
+  .btn::after {
+    content: " [" attr(aria-label) "]";
+    font-size: smaller;
+  }
+
+  .emotion-indicator::after {
+    content: " (" attr(aria-label) ")";
+    font-size: smaller;
+  }
+
+  /* 배경색 제거하여 잉크 절약 */
+  * {
+    background-color: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  /* 링크 URL 표시 */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: smaller;
+  }
+}
+
+/* ============================================================================
+   Language & Internationalization - 언어 및 국제화 접근성
+   ============================================================================ */
+
+/**
+ * RTL (오른쪽에서 왼쪽) 언어 지원
+ */
+[dir="rtl"] .btn {
+  text-align: right;
+}
+
+[dir="rtl"] .input {
+  text-align: right;
+}
+
+[dir="rtl"] .alert {
+  border-left: none;
+  border-right: 4px solid;
+}
+
+/**
+ * 한국어 타이포그래피 최적화
+ */
+:lang(ko) {
+  font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', sans-serif;
+  word-break: keep-all;
+  line-height: 1.7;
+}
+
+/**
+ * 영어 타이포그래피 최적화
+ */
+:lang(en) {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  hyphens: auto;
+}
+
+/* ============================================================================
+   Cognitive Accessibility - 인지적 접근성
+   ============================================================================ */
+
+/**
+ * 단순 모드 (인지 부담 감소)
+ */
+.simple-mode {
+  font-size: 18px;
+  line-height: 1.8;
+  letter-spacing: 0.02em;
+}
+
+.simple-mode .btn {
+  padding: 16px 24px;
+  font-size: 18px;
+  border-radius: 8px;
+}
+
+.simple-mode .complex-animation,
+.simple-mode .gradient-background {
+  display: none;
+}
+
+/**
+ * 타임아웃 경고
+ */
+.timeout-warning {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1700;
+
+  padding: 16px;
+  background-color: var(--color-warning);
+  color: white;
+  border-radius: 8px;
+
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/**
+ * 도움말 툴팁
+ */
+.help-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.help-tooltip::after {
+  content: "?";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  text-align: center;
+  background-color: var(--color-info);
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: help;
+}
+
+.help-tooltip:hover .tooltip-content,
+.help-tooltip:focus .tooltip-content {
+  visibility: visible;
+  opacity: 1;
+}
+
+.tooltip-content {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: white;
+  text-align: center;
+  border-radius: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  z-index: 1;
+
+  transition: opacity 0.3s;
+}
+
+.tooltip-content::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent transparent;
+}

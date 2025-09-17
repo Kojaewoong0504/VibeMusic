@@ -1,0 +1,16 @@
+# 프로덕션 환경 전용 추가 의존성
+
+# 프로덕션 ASGI 서버
+gunicorn==21.2.0
+
+# 성능 모니터링
+sentry-sdk[fastapi]==1.38.0
+
+# 로깅 최적화
+loguru==0.7.2
+
+# 프로덕션 보안
+cryptography==41.0.7
+
+# 메모리 최적화
+orjson==3.9.10

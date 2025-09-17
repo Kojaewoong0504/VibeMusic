@@ -1,0 +1,47 @@
+{
+  "timestamp": "20250917_092928",
+  "test_environment": {
+    "os": "Darwin",
+    "node_version": "v22.19.0",
+    "python_version": "Python 3.12.3",
+    "docker_version": "Docker version 28.4.0, build d8eb465"
+  },
+  "performance_tests": {
+    "api_performance": {
+      "status": "completed",
+      "response_times": [],
+      "avg_response_time": 0,
+      "error_rate": 0,
+      "passed": "true"
+    },
+    "websocket_performance": {
+      "status": "completed",
+      "latency_ms": 999,
+      "connection_success_rate": 0,
+      "concurrent_connections": 0,
+      "passed": "false"
+    },
+    "load_testing": {
+      "status": "completed",
+      "concurrent_users": 50,
+      "requests_per_second": 5866,
+      "failure_rate": 0,
+      "passed": "true"
+    },
+    "resource_usage": {
+      "status": "completed",
+      "cpu_usage": 0,
+      "memory_usage": 0,
+      "disk_usage": 59,
+      "passed": "true"
+    },
+    "music_generation": {
+      "status": "completed",
+      "generation_time_ms": 0,
+      "success_rate": 100,
+      "passed": "true"
+    }
+  },
+  "overall_score": 80,
+  "recommendations": []
+}

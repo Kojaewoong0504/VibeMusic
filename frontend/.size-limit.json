@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Main Bundle",
+    "path": "dist/js/index-*.js",
+    "limit": "200 KB",
+    "webpack": false
+  },
+  {
+    "name": "React Vendor",
+    "path": "dist/js/react-vendor-*.js",
+    "limit": "150 KB",
+    "webpack": false
+  },
+  {
+    "name": "UI Vendor",
+    "path": "dist/js/ui-vendor-*.js",
+    "limit": "100 KB",
+    "webpack": false
+  },
+  {
+    "name": "State Vendor",
+    "path": "dist/js/state-vendor-*.js",
+    "limit": "50 KB",
+    "webpack": false
+  },
+  {
+    "name": "Form Vendor",
+    "path": "dist/js/form-vendor-*.js",
+    "limit": "80 KB",
+    "webpack": false
+  },
+  {
+    "name": "Network Vendor",
+    "path": "dist/js/network-vendor-*.js",
+    "limit": "100 KB",
+    "webpack": false
+  },
+  {
+    "name": "Utils Vendor",
+    "path": "dist/js/utils-vendor-*.js",
+    "limit": "30 KB",
+    "webpack": false
+  },
+  {
+    "name": "Main CSS",
+    "path": "dist/css/index-*.css",
+    "limit": "50 KB",
+    "webpack": false
+  },
+  {
+    "name": "Total Bundle Size",
+    "path": "dist/**/*.{js,css}",
+    "limit": "800 KB",
+    "webpack": false
+  }
+]

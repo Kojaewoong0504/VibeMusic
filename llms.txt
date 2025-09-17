@@ -1,0 +1,315 @@
+# VibeMusic - 감정 기반 AI 음악 생성 서비스
+
+## 프로젝트 개요
+
+VibeMusic은 사용자의 타이핑 패턴을 실시간으로 분석하여 감정을 추출하고, 이를 기반으로 개인화된 AI 음악을 생성하는 웹 서비스입니다. 키보드 입력의 리듬, 속도, 일시정지 패턴을 분석하여 사용자의 현재 감정 상태를 파악하고, 이를 음악 생성 AI에게 전달하여 감정에 맞는 음악을 생성합니다.
+
+## 핵심 기능
+
+### 실시간 타이핑 패턴 분석
+- WebSocket을 통한 키스트로크 데이터 실시간 수집
+- 타이핑 속도(WPM), 리듬 일관성, 일시정지 패턴 분석
+- 키 간격, 누르는 시간, 패턴 변화 측정
+
+### 감정 프로필 생성
+- 타이핑 패턴을 다차원 감정 벡터로 변환
+- 에너지, 각성도, 집중도, 긴장도 등 감정 차원 분석
+- 음악적 속성(템포, 장르, 조성)으로 매핑
+
+### AI 음악 생성
+- 사용자 프롬프트와 감정 프로필 결합
+- MusicGen 또는 유사 AI 모델을 통한 음악 생성
+- 개인화된 45-60초 음악 클립 제작
+
+## 기술 스택
+
+### 백엔드
+- **언어**: Python 3.12+
+- **프레임워크**: FastAPI (비동기 웹 프레임워크)
+- **데이터베이스**: PostgreSQL 15+ (관계형 데이터 저장)
+- **캐시**: Redis 7+ (세션 관리, 실시간 데이터)
+- **ORM**: SQLAlchemy (데이터베이스 추상화)
+- **마이그레이션**: Alembic (스키마 버전 관리)
+- **실시간 통신**: WebSocket (타이핑 데이터 전송)
+
+### 프론트엔드
+- **언어**: TypeScript
+- **프레임워크**: React 18+ (함수형 컴포넌트, Hooks)
+- **빌드**: Vite (빠른 개발 환경)
+- **스타일링**: Tailwind CSS (유틸리티 퍼스트)
+- **상태관리**: Zustand (클라이언트), React Query (서버)
+- **UI 애니메이션**: Framer Motion
+
+### 독립 라이브러리
+- **vibemusic-pattern-analyzer**: 키스트로크 패턴 분석
+- **vibemusic-emotion-mapper**: 감정 프로필 매핑
+- **vibemusic-ai-connector**: AI 음악 생성 API 연동
+
+## 아키텍처 패턴
+
+### 백엔드 아키텍처
+```
+API Layer (FastAPI)
+    ↓
+Service Layer (비즈니스 로직)
+    ↓
+Repository Layer (데이터 접근)
+    ↓
+Database Layer (PostgreSQL)
+
+독립 라이브러리들 (CLI 지원)
+    ↓
+Library Layer (독립 실행 가능)
+```
+
+### 프론트엔드 아키텍처
+```
+Pages (라우팅)
+    ↓
+Components (UI 로직)
+    ↓
+Hooks (상태 로직)
+    ↓
+Services (API 통신)
+    ↓
+Stores (전역 상태)
+```
+
+## 데이터 모델
+
+### 주요 엔티티
+
+#### UserSession
+- 사용자 세션 정보 (24시간 자동 삭제)
+- 세션 토큰, 동의 상태, 생성 시간
+- 총 타이핑 시간, 생성된 음악 개수
+
+#### TypingPattern
+- 분석된 타이핑 패턴 데이터
+- WPM, 리듬 일관성, 키 간격 통계
+- 일시정지 패턴, 타이핑 변화도
+
+#### EmotionProfile
+- 감정 분석 결과
+- 다차원 감정 벡터 (에너지, 각성도, 집중도)
+- 주요 감정, 신뢰도 점수
+
+#### GeneratedMusic
+- AI 생성 음악 정보
+- 음악 파일 경로, 메타데이터
+- 생성 프롬프트, 감정 컨텍스트
+
+## API 엔드포인트
+
+### 세션 관리
+- `POST /v1/sessions/` - 새 세션 생성
+- `GET /v1/sessions/{id}` - 세션 정보 조회
+
+### 패턴 분석
+- `POST /v1/sessions/{id}/analyze` - 타이핑 패턴 분석
+- `WS /v1/ws/{id}` - 실시간 타이핑 데이터 수집
+
+### 음악 생성
+- `POST /v1/sessions/{id}/generate` - AI 음악 생성 요청
+- `GET /v1/sessions/{id}/music/{id}` - 생성된 음악 정보
+- `GET /v1/sessions/{id}/music/{id}/download` - 음악 파일 다운로드
+
+## 핵심 알고리즘
+
+### 타이핑 패턴 분석 (PatternAnalyzer)
+```python
+class PatternAnalyzer:
+    def analyze(self, keystrokes: List[KeystrokeData]) -> TypingStatistics:
+        # WPM 계산 (단어당 5글자 기준)
+        # 키 간격 통계 (평균, 표준편차, 분포)
+        # 일시정지 감지 (500ms+ 간격)
+        # 리듬 일관성 점수 (변동 계수)
+        # 타이핑 속도 점수 정규화
+```
+
+### 감정 매핑 (EmotionMapper)
+```python
+class EmotionMapper:
+    def map_to_emotion(self, typing_stats: TypingStatistics) -> EmotionProfile:
+        # 속도 → 에너지 레벨 (빠름=높은 에너지)
+        # 일관성 → 집중도 (일관됨=높은 집중)
+        # 일시정지 → 긴장/사색 (길수록=높은 긴장)
+        # 다차원 감정 벡터 생성
+        # 음악적 속성 매핑 (템포, 조성, 장르)
+```
+
+### AI 연동 (AIConnector)
+```python
+class AIConnector:
+    async def generate_music(self, prompt: str, emotion: EmotionProfile) -> MusicResult:
+        # 사용자 프롬프트와 감정 프로필 결합
+        # AI 모델 API 호출 (MusicGen 등)
+        # 진행 상태 실시간 업데이트
+        # 생성된 음악 파일 처리 및 저장
+```
+
+## 보안 및 개인정보보호
+
+### 데이터 보호
+- 24시간 자동 데이터 삭제 정책
+- 세션 기반 토큰 인증
+- HTTPS/WSS 암호화 통신
+- CORS 정책으로 허용된 도메인만 접근
+
+### 개인정보 처리
+- 최소한의 데이터 수집 (키스트로크 패턴만)
+- 개인 식별 정보 저장 안함
+- 사용자 동의 필수
+- GDPR 준수 설계
+
+## 성능 최적화
+
+### 백엔드
+- 비동기 I/O (FastAPI, aiohttp)
+- 데이터베이스 연결 풀링
+- Redis 캐싱 활용
+- 배치 처리로 DB 부하 최소화
+
+### 프론트엔드
+- React.memo, useMemo 최적화
+- 지연 로딩 (React.lazy)
+- 번들 크기 최적화
+- WebSocket 연결 재사용
+
+### 실시간 성능
+- 키 입력 지연시간 <50ms
+- 음악 생성 시간 <30초
+- 동시 사용자 1,000명 지원
+- WebSocket 연결 >1시간 유지
+
+## 테스트 전략
+
+### 테스트 피라미드
+- **Unit Tests**: 개별 함수/컴포넌트 (많음)
+- **Integration Tests**: API/데이터베이스 통합 (보통)
+- **E2E Tests**: 사용자 플로우 전체 (적음)
+
+### 주요 테스트 영역
+- 타이핑 패턴 분석 정확성
+- 감정 매핑 일관성
+- AI 연동 안정성
+- WebSocket 연결 내구성
+- 사용자 인터페이스 접근성
+
+## 배포 및 운영
+
+### 개발 환경
+- Docker Compose로 전체 스택 관리
+- Hot reload 개발 서버
+- 로컬 PostgreSQL/Redis
+
+### 프로덕션 환경
+- 컨테이너 기반 배포
+- Nginx 리버스 프록시
+- 환경별 설정 분리
+- 로그 수집 및 모니터링
+
+### 모니터링
+- 헬스 체크 엔드포인트
+- Prometheus 메트릭 수집
+- 에러 추적 시스템
+- 성능 지표 대시보드
+
+## 라이브러리별 상세 정보
+
+### vibemusic-pattern-analyzer
+**목적**: 키스트로크 데이터를 받아 타이핑 패턴 통계를 생성
+**입력**: 키, 타임스탬프, 누르는 시간, 키 간격 데이터
+**출력**: WPM, 리듬 일관성, 일시정지 패턴, 속도 점수
+**CLI 지원**: `pattern-analyzer analyze --input keystrokes.json`
+
+### vibemusic-emotion-mapper
+**목적**: 타이핑 통계를 다차원 감정 프로필로 변환
+**입력**: 타이핑 통계 객체
+**출력**: 감정 벡터, 주요 감정, 음악적 속성 힌트
+**CLI 지원**: `emotion-mapper map --input typing_stats.json`
+
+### vibemusic-ai-connector
+**목적**: 감정 프로필과 사용자 프롬프트를 AI 음악 생성 API에 연동
+**입력**: 텍스트 프롬프트, 감정 프로필
+**출력**: 생성된 음악 파일, 메타데이터
+**CLI 지원**: `ai-connector generate --prompt "calm piano" --emotion emotion.json`
+
+## 사용 예시
+
+### 전체 워크플로우
+1. 사용자가 웹사이트 접속 → 새 세션 생성
+2. 타이핑 인터페이스에서 자유롭게 입력 → 실시간 패턴 캡처
+3. "분석하기" 버튼 클릭 → 패턴 분석 및 감정 프로필 생성
+4. 음악 스타일 프롬프트 입력 → AI 음악 생성 시작
+5. 30초 후 개인화된 음악 완성 → 재생 및 다운로드
+
+### API 호출 시퀀스
+```
+POST /v1/sessions/ → 세션 토큰 받기
+WS /v1/ws/{session_id} → 실시간 타이핑 데이터 전송
+POST /v1/sessions/{id}/analyze → 패턴 분석 실행
+POST /v1/sessions/{id}/generate → 음악 생성 요청
+GET /v1/sessions/{id}/music/{id} → 생성 상태 확인
+GET /v1/sessions/{id}/music/{id}/download → 음악 다운로드
+```
+
+## 확장 계획
+
+### 단기 (3개월)
+- 다양한 음악 장르 지원 확대
+- 모바일 반응형 UI 개선
+- 음성 입력 패턴 분석 추가
+
+### 장기 (12개월)
+- 머신러닝 모델 자체 훈련
+- 소셜 기능 (음악 공유)
+- 구독 기반 프리미엄 서비스
+- 다국어 지원
+
+## 개발 환경 설정
+
+### 필수 요구사항
+- Python 3.12+ (백엔드)
+- Node.js 18+ (프론트엔드)
+- PostgreSQL 15+ (데이터베이스)
+- Redis 7+ (캐시)
+- Docker & Docker Compose (개발 환경)
+
+### 빠른 시작
+```bash
+git clone https://github.com/vibemusic/vibemusic.git
+cd vibemusic
+docker-compose up -d
+cd backend && pip install -r requirements.txt
+cd ../frontend && npm install
+npm run dev
+```
+
+### 테스트 실행
+```bash
+# 백엔드 테스트
+cd backend && pytest --cov=src
+
+# 프론트엔드 테스트
+cd frontend && npm test
+
+# E2E 테스트
+npm run test:e2e
+```
+
+## 기여하기
+
+1. 이슈 생성 및 할당
+2. Feature 브랜치 생성
+3. 개발 및 테스트 작성
+4. Pull Request 생성
+5. 코드 리뷰 후 병합
+
+## 라이선스
+
+MIT License - 자유로운 사용, 수정, 배포 가능
+
+---
+
+**VibeMusic v1.0.0** - 감정으로 만드는 나만의 음악

@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply text-gray-900 bg-white antialiased;
+  }
+  
+  * {
+    @apply border-gray-200;
+  }
+}
+
+@layer components {
+  /* 기본 버튼 스타일 */
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500;
+  }
+  
+  .btn-outline {
+    @apply border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500;
+  }
+  
+  /* 입력 필드 스타일 */
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200;
+  }
+  
+  /* 감정 표시 관련 스타일 */
+  .emotion-indicator {
+    @apply w-4 h-4 rounded-full transition-all duration-300;
+  }
+  
+  .emotion-calm {
+    @apply bg-emotion-calm;
+  }
+  
+  .emotion-excited {
+    @apply bg-emotion-excited;
+  }
+  
+  .emotion-sad {
+    @apply bg-emotion-sad;
+  }
+  
+  .emotion-angry {
+    @apply bg-emotion-angry;
+  }
+  
+  .emotion-happy {
+    @apply bg-emotion-happy;
+  }
+  
+  .emotion-focused {
+    @apply bg-emotion-focused;
+  }
+  
+  /* 타이핑 애니메이션 */
+  .typing-cursor {
+    @apply animate-typing;
+  }
+  
+  /* 음악 플레이어 관련 */
+  .waveform-bar {
+    @apply bg-primary-500 transition-all duration-150 ease-out;
+  }
+  
+  /* 로딩 스피너 */
+  .spinner {
+    @apply animate-spin rounded-full border-4 border-gray-200 border-t-primary-600;
+  }
+  
+  /* 카드 스타일 */
+  .card {
+    @apply bg-white rounded-xl shadow-lg p-6 border border-gray-100;
+  }
+  
+  /* 그라디언트 배경 */
+  .gradient-bg {
+    @apply bg-gradient-to-br from-primary-50 via-white to-secondary-50;
+  }
+}
