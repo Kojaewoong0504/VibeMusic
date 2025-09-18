@@ -168,6 +168,36 @@ async def create_session(
         HTTPException: 세션 생성 실패시
     """
     try:
+        # 필수 필드 검증
+        if not request_data.consent_given:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "CONSENT_REQUIRED",
+                    "message": "데이터 수집 및 처리에 대한 동의가 필요합니다.",
+                    "details": {
+                        "field": "consent_given",
+                        "required": True,
+                        "current_value": request_data.consent_given
+                    }
+                }
+            )
+
+        # 프롬프트 길이 검증 (추가 검증)
+        if request_data.prompt and len(request_data.prompt.strip()) > 1000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "PROMPT_TOO_LONG",
+                    "message": "프롬프트는 최대 1000자까지 입력 가능합니다.",
+                    "details": {
+                        "field": "prompt",
+                        "max_length": 1000,
+                        "current_length": len(request_data.prompt.strip())
+                    }
+                }
+            )
+
         # 클라이언트 정보 추출
         client_info = get_client_info(request)
 
@@ -176,6 +206,7 @@ async def create_session(
             user_agent=client_info["user_agent"],
             ip_address=client_info["ip_address"],
             consent_given=request_data.consent_given,
+            prompt=request_data.prompt.strip() if request_data.prompt else None,
             metadata=request_data.metadata
         )
 
@@ -188,11 +219,15 @@ async def create_session(
             created_at=user_session.created_at,
             auto_delete_at=user_session.auto_delete_at,
             total_typing_time=user_session.total_typing_time,
-            music_generated_count=user_session.music_generated_count,
-            metadata=user_session.metadata
+            total_music_generated=user_session.total_music_generated,
+            session_metadata=user_session.session_metadata
         )
 
         return response_data
+
+    except HTTPException:
+        # 이미 적절한 HTTPException이 발생한 경우 재발생
+        raise
 
     except ValueError as e:
         # 유효성 검증 오류
@@ -288,8 +323,8 @@ async def get_session(
             created_at=user_session.created_at,
             auto_delete_at=user_session.auto_delete_at,
             total_typing_time=user_session.total_typing_time,
-            music_generated_count=user_session.music_generated_count,
-            metadata=user_session.metadata
+            total_music_generated=user_session.total_music_generated,
+            session_metadata=user_session.session_metadata
         )
 
         return response_data

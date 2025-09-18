@@ -13,7 +13,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 
-import redis.asyncio as aioredis
+import redis.asyncio as redis
 from redis.asyncio import Redis
 from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
 
@@ -39,12 +39,9 @@ class RedisClient:
     async def connect(self) -> None:
         """Redis 서버에 연결"""
         try:
-            # 연결 풀 생성
-            self._connection_pool = aioredis.ConnectionPool(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                password=settings.REDIS_PASSWORD,
-                db=settings.REDIS_DB,
+            # Redis URL로 직접 연결 (환경변수 우선)
+            self._client = redis.from_url(
+                settings.REDIS_URL,
                 encoding='utf-8',
                 decode_responses=True,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
@@ -55,9 +52,6 @@ class RedisClient:
                 socket_keepalive_options={},
                 health_check_interval=30
             )
-
-            # Redis 클라이언트 생성
-            self._client = Redis(connection_pool=self._connection_pool)
 
             # 연결 테스트
             await self._client.ping()

@@ -17,6 +17,12 @@ class SessionCreateRequest(BaseModel):
         description="데이터 수집 및 처리에 대한 사용자 동의 여부"
     )
 
+    prompt: Optional[str] = Field(
+        default=None,
+        max_length=1000,
+        description="초기 텍스트 프롬프트 (선택사항, 최대 1000자)"
+    )
+
     metadata: Optional[Dict[str, Any]] = Field(
         default=None,
         description="추가 메타데이터 (선택사항)"
@@ -26,6 +32,7 @@ class SessionCreateRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "consent_given": True,
+                "prompt": "오늘 기분이 좋아서 신나는 음악을 만들고 싶어요",
                 "metadata": {
                     "browser": "Chrome",
                     "platform": "Windows",
@@ -45,8 +52,8 @@ class SessionResponse(BaseModel):
     created_at: datetime = Field(..., description="세션 생성 시각")
     auto_delete_at: Optional[datetime] = Field(None, description="자동 삭제 예정 시각")
     total_typing_time: int = Field(..., description="총 타이핑 시간 (초)")
-    music_generated_count: int = Field(..., description="생성된 음악 개수")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="추가 메타데이터")
+    total_music_generated: int = Field(..., description="생성된 음악 개수")
+    session_metadata: Optional[Dict[str, Any]] = Field(None, description="추가 세션 메타데이터")
 
     class Config:
         from_attributes = True
@@ -59,8 +66,8 @@ class SessionResponse(BaseModel):
                 "created_at": "2025-09-15T12:00:00Z",
                 "auto_delete_at": "2025-09-16T12:00:00Z",
                 "total_typing_time": 0,
-                "music_generated_count": 0,
-                "metadata": {
+                "total_music_generated": 0,
+                "session_metadata": {
                     "browser": "Chrome",
                     "platform": "Windows"
                 }

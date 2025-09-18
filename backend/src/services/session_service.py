@@ -31,6 +31,7 @@ class SessionService:
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None,
         consent_given: bool = False,
+        prompt: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> UserSession:
         """
@@ -40,6 +41,7 @@ class SessionService:
             user_agent: 브라우저 User-Agent
             ip_address: 사용자 IP 주소 (해시 처리됨)
             consent_given: 데이터 수집 동의 여부
+            prompt: 초기 텍스트 프롬프트 (음악 생성용)
             metadata: 추가 메타데이터
 
         Returns:
@@ -51,13 +53,18 @@ class SessionService:
         # IP 주소 해시 처리 (개인정보 보호)
         ip_hash = self._hash_ip_address(ip_address) if ip_address else None
 
+        # 메타데이터 구성 (prompt 포함)
+        session_metadata = metadata or {}
+        if prompt:
+            session_metadata["initial_prompt"] = prompt
+
         # 새 세션 객체 생성
         new_session = UserSession(
             session_token=session_token,
             user_agent=user_agent,
             ip_address_hash=ip_hash,
             consent_given=consent_given,
-            metadata=metadata or {}
+            session_metadata=session_metadata
         )
 
         # 데이터베이스에 저장

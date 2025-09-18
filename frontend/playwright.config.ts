@@ -173,8 +173,8 @@ export default defineConfig({
   },
 
   // 글로벌 설정
-  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
-  globalTeardown: require.resolve('./tests/e2e/global-teardown.ts'),
+  globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
 
   // 출력 디렉토리
   outputDir: 'test-results/',

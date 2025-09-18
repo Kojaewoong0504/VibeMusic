@@ -1,180 +1,105 @@
 """
-VibeMusic 실시간 타이핑 데이터 처리 파이프라인
-
-감정 기반 AI 음악 생성을 위한 실시간 데이터 분석 및 처리
-- 타이핑 패턴 실시간 분석
-- 감정 상태 추출 및 캐싱
-- 음악 생성 트리거 관리
-- 데이터 버퍼링 및 최적화
+T005: 실시간 타이핑 데이터 처리 서비스 (임시 모킹 버전)
+WebSocket으로 받은 타이핑 데이터를 처리하고 감정 분석 결과 반환
 """
 
 import logging
+import random
 import asyncio
-import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-import numpy as np
-from collections import deque
-
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from src.cache.redis_client import CacheService
-from src.models.user_session import UserSession
-from src.models.typing_pattern import TypingPattern
-from src.models.emotion_profile import EmotionProfile
-from src.lib.pattern_analyzer.analyzer import PatternAnalyzer
-from src.lib.emotion_mapper.mapper import EmotionMapper
-from src.lib.ai_connector.connector import AIConnector
-from src.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# Data Classes
-# ============================================================================
-
-@dataclass
-class TypingEvent:
-    """개별 키 입력 이벤트"""
-    keystroke: str
-    timestamp: float
-    interval: float  # 이전 키와의 간격 (ms)
-    key_code: Optional[int] = None
-    is_special: bool = False  # 특수키 여부
-    session_time: float = 0.0  # 세션 시작부터 경과 시간
-
-
-@dataclass
-class TypingMetrics:
-    """타이핑 메트릭스"""
-    wpm: float  # Words Per Minute
-    rhythm_variance: float  # 리듬 변동성
-    pause_frequency: float  # 일시정지 빈도
-    burst_intensity: float  # 타이핑 버스트 강도
-    consistency_score: float  # 일관성 점수
-    total_keystrokes: int
-    session_duration: float  # 초
-
-
-@dataclass
-class EmotionSnapshot:
-    """감정 상태 스냅샷"""
-    energy: float  # 0-1
-    valence: float  # -1 to 1
-    tension: float  # 0-1
-    focus: float  # 0-1
-    confidence: float  # 0-1
-    dominant_emotion: str
-    timestamp: datetime
-
-
 @dataclass
 class ProcessingResult:
-    """처리 결과"""
+    """처리 결과 클래스"""
     success: bool
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    buffer_size: int = 0
-    trigger_emotion_analysis: bool = False
-    trigger_music_generation: bool = False
-    patterns_detected: List[str] = None
 
+@dataclass
+class TypingEvent:
+    """타이핑 이벤트 클래스"""
+    timestamp: datetime
+    char: str
+    key_code: str
+    duration: float
+    interval: float
 
-# ============================================================================
-# Realtime Processor
-# ============================================================================
+@dataclass
+class TypingMetrics:
+    """타이핑 메트릭 클래스"""
+    wpm: float
+    accuracy: float
+    rhythm_stability: float
+    pause_frequency: float
+
+@dataclass
+class EmotionSnapshot:
+    """감정 스냅샷 클래스"""
+    energy: float
+    tension: float
+    focus: float
+    stress: float
+    timestamp: datetime
 
 class RealtimeProcessor:
-    """
-    실시간 타이핑 데이터 처리기
+    """실시간 타이핑 데이터 처리기"""
 
-    실시간으로 수신되는 키보드 입력을 분석하여
-    사용자의 감정 상태를 추출하고 음악 생성을 트리거
-    """
+    def __init__(self, cache_service, db_session: AsyncSession):
+        self.cache_service = cache_service
+        self.db_session = db_session
+        self.session_buffers: Dict[str, List[Dict[str, Any]]] = {}
 
-    def __init__(self, cache_service: CacheService, db_session: AsyncSession):
-        self.cache = cache_service
-        self.db = db_session
-
-        # 컴포넌트 초기화
-        self.pattern_analyzer = PatternAnalyzer()
-        self.emotion_mapper = EmotionMapper()
-        self.ai_connector = AIConnector()
-
-        # 처리 상태 추적
-        self.processing_sessions: Dict[str, Dict[str, Any]] = {}
-
-        # 설정값
-        self.MIN_EVENTS_FOR_ANALYSIS = 50  # 분석을 위한 최소 이벤트 수
-        self.ANALYSIS_INTERVAL = 10.0  # 분석 주기 (초)
-        self.BUFFER_SIZE_LIMIT = 1000  # 버퍼 크기 제한
-        self.EMOTION_ANALYSIS_THRESHOLD = 100  # 감정 분석 트리거 임계값
-
-    # ========================================================================
-    # Core Processing Methods
-    # ========================================================================
-
-    async def process_typing_event(self, session_id: str, event_data: Dict[str, Any]) -> ProcessingResult:
-        """
-        개별 타이핑 이벤트 처리
-        """
+    async def process_typing_event(self, session_id: str, typing_data: Dict[str, Any]) -> Dict[str, Any]:
+        """타이핑 이벤트 처리"""
         try:
-            # 이벤트 데이터 검증 및 파싱
-            typing_event = self._parse_typing_event(event_data)
-            if not typing_event:
-                return ProcessingResult(
-                    success=False,
-                    error="잘못된 타이핑 이벤트 데이터"
-                )
+            logger.info(f"타이핑 이벤트 처리: session_id={session_id}, data={typing_data}")
 
-            # Redis 버퍼에 이벤트 저장
-            buffer_success = await self.cache.push_typing_data(session_id, event_data)
-            if not buffer_success:
-                return ProcessingResult(
-                    success=False,
-                    error="타이핑 데이터 버퍼링 실패"
-                )
+            # 세션 버퍼 초기화
+            if session_id not in self.session_buffers:
+                self.session_buffers[session_id] = []
 
-            # 현재 버퍼 크기 확인
-            buffer = await self.cache.get_typing_buffer(session_id, limit=self.BUFFER_SIZE_LIMIT)
-            buffer_size = len(buffer)
+            # 타이핑 데이터를 버퍼에 저장
+            self.session_buffers[session_id].append({
+                **typing_data,
+                'processed_at': datetime.utcnow().isoformat()
+            })
 
-            # 실시간 패턴 분석
-            patterns = await self._analyze_realtime_patterns(session_id, buffer)
+            # 버퍼 크기 제한 (최대 100개 이벤트)
+            if len(self.session_buffers[session_id]) > 100:
+                self.session_buffers[session_id] = self.session_buffers[session_id][-100:]
 
-            # 감정 분석 트리거 조건 확인
-            should_analyze_emotion = await self._should_trigger_emotion_analysis(
-                session_id, buffer_size, patterns
-            )
+            buffer_size = len(self.session_buffers[session_id])
 
-            # 음악 생성 트리거 조건 확인
-            should_generate_music = await self._should_trigger_music_generation(
-                session_id, patterns
-            )
+            # 간단한 패턴 감지 (모킹)
+            patterns_detected = self._detect_patterns(self.session_buffers[session_id])
 
-            return ProcessingResult(
-                success=True,
-                data={
-                    'event_processed': True,
-                    'patterns': patterns,
-                    'metrics': await self._calculate_realtime_metrics(buffer)
-                },
-                buffer_size=buffer_size,
-                patterns_detected=patterns,
-                trigger_emotion_analysis=should_analyze_emotion,
-                trigger_music_generation=should_generate_music
-            )
+            # 감정 분석 트리거 조건 (버퍼에 5개 이상 이벤트가 있으면)
+            trigger_emotion_analysis = buffer_size >= 5 and buffer_size % 5 == 0
+
+            # 기본 감정 점수 계산 (모킹)
+            emotion_score = self._calculate_basic_emotion(self.session_buffers[session_id]) if buffer_size >= 3 else None
+
+            return {
+                'success': True,
+                'buffer_size': buffer_size,
+                'patterns_detected': patterns_detected,
+                'emotion_score': emotion_score,
+                'trigger_emotion_analysis': trigger_emotion_analysis
+            }
 
         except Exception as e:
-            logger.error("타이핑 이벤트 처리 실패: session_id=%s, error=%s", session_id, str(e))
-            return ProcessingResult(
-                success=False,
-                error=f"이벤트 처리 중 오류 발생: {str(e)}"
-            )
+            logger.error(f"타이핑 이벤트 처리 실패: session_id={session_id}, error={str(e)}")
+            return {
+                'success': False,
+                'error': f'타이핑 이벤트 처리 실패: {str(e)}'
+            }
 
-    async def trigger_emotion_analysis(self, session_id: str) -> ProcessingResult:
+    async def trigger_emotion_analysis(self, session_id: str) -> Dict[str, Any]:
         """
         감정 분석 트리거
         """

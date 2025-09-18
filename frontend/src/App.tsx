@@ -3,9 +3,11 @@ import { Routes, Route } from 'react-router-dom'
 import MainPage from '@/pages/MainPage'
 import MusicGenerationPage from '@/pages/MusicGenerationPage'
 import ResultPage from '@/pages/ResultPage'
+import TypingTestPage from '@/pages/TypingTestPage'
 import { useTheme, getInitialTheme } from '@/hooks/useTheme'
 import ThemeToggle from '@/components/ThemeToggle'
 import { SkipLink } from '@/hooks/useKeyboardNavigation'
+import { WebSocketTest } from '@/components/WebSocketTest'
 
 function App() {
   const { effectiveTheme, colors } = useTheme()
@@ -56,6 +58,8 @@ function App() {
             <Route path="/" element={<MainPage />} />
             <Route path="/generate" element={<MusicGenerationPage />} />
             <Route path="/result/:musicId" element={<ResultPage />} />
+            <Route path="/test-typing" element={<TypingTestPage />} />
+            <Route path="/test-websocket" element={<WebSocketTest />} />
           </Routes>
         </main>
       </div>

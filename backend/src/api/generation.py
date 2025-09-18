@@ -13,9 +13,11 @@ from src.database.connection import get_async_session
 from src.services.music_generation_service import MusicGenerationService
 from src.services.pattern_analysis_service import PatternAnalysisService
 from src.services.session_service import SessionService
+from src.services.music_generator import music_service, MusicGenerationRequest
 from src.api.sessions import extract_session_token, verify_session_access, get_session_service
 from src.api.schemas.generation import GenerateRequest, GenerateResponse, EmotionSummary, MusicPromptInfo
 from src.api.schemas.common import ErrorResponse
+from src.models.emotion import EmotionData
 
 
 # API 라우터 생성
@@ -244,6 +246,271 @@ async def generate_music(
             detail={
                 "error": "MUSIC_GENERATION_FAILED",
                 "message": "음악 생성 중 예상치 못한 오류가 발생했습니다.",
+                "details": {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            }
+        )
+
+
+@router.post(
+    "/{session_id}/generate-simple",
+    response_model=Dict[str, Any],
+    status_code=status.HTTP_201_CREATED,
+    summary="간단한 AI 음악 생성",
+    description="감정 데이터를 직접 입력받아 AI 음악을 생성합니다. (T007 목업 버전)",
+    responses={
+        201: {
+            "description": "음악 생성이 성공적으로 시작되었습니다."
+        },
+        400: {
+            "description": "잘못된 요청 데이터",
+            "model": ErrorResponse
+        },
+        401: {
+            "description": "인증 실패",
+            "model": ErrorResponse
+        },
+        500: {
+            "description": "서버 내부 오류",
+            "model": ErrorResponse
+        }
+    }
+)
+async def generate_simple_music(
+    session_id: str,
+    request_data: Dict[str, Any],
+    session_token: Optional[str] = Depends(extract_session_token),
+    session_service: SessionService = Depends(get_session_service)
+) -> Dict[str, Any]:
+    """
+    간단한 AI 음악 생성 (T007 구현)
+
+    감정 데이터를 직접 입력받아 목업 AI 음악을 생성합니다.
+    실제 타이핑 패턴 분석 없이 감정 데이터만으로 음악을 생성하는 MVP 버전입니다.
+
+    Request Body:
+    {
+        "emotion_data": {
+            "energy": 0.7,
+            "valence": 0.3,
+            "tension": 0.5,
+            "focus": 0.8
+        },
+        "user_prompt": "optional user prompt",
+        "style_preference": "ambient",
+        "duration": 30
+    }
+
+    Args:
+        session_id: 세션 ID (경로 파라미터)
+        request_data: 음악 생성 요청 데이터
+        session_token: 세션 토큰 (Authorization 헤더에서 추출)
+        session_service: SessionService 의존성
+
+    Returns:
+        음악 생성 결과 및 상태 정보
+
+    Raises:
+        HTTPException: 인증 실패, 잘못된 요청, 서버 오류
+    """
+    try:
+        # 세션 접근 권한 검증
+        user_session = await verify_session_access(
+            session_id, session_token, session_service
+        )
+
+        # 요청 데이터 검증
+        if "emotion_data" not in request_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "MISSING_EMOTION_DATA",
+                    "message": "감정 데이터가 필요합니다.",
+                    "details": {
+                        "required_fields": ["emotion_data"]
+                    }
+                }
+            )
+
+        emotion_dict = request_data["emotion_data"]
+
+        # 감정 데이터 객체 생성
+        emotion_data = EmotionData(
+            energy=emotion_dict.get("energy", 0.5),
+            valence=emotion_dict.get("valence", 0.0),
+            tension=emotion_dict.get("tension", 0.5),
+            focus=emotion_dict.get("focus", 0.5),
+            confidence=emotion_dict.get("confidence", 0.8),
+            sample_size=emotion_dict.get("sample_size", 10),
+            processing_time_ms=emotion_dict.get("processing_time_ms", 50.0)
+        )
+
+        # 음악 생성 요청 구성
+        music_request = MusicGenerationRequest(
+            emotion_data=emotion_data,
+            user_prompt=request_data.get("user_prompt"),
+            style_preference=request_data.get("style_preference"),
+            duration=request_data.get("duration", 30)
+        )
+
+        # 음악 생성 시작
+        generation_result = await music_service.generate_music(music_request)
+
+        # 세션 활동 업데이트
+        await session_service.update_session_activity(
+            session_id=session_id,
+            music_generated=True
+        )
+
+        # 응답 데이터 구성
+        response_data = {
+            "success": True,
+            "generation_id": generation_result.generation_id,
+            "status": generation_result.status.value,
+            "prompt": {
+                "text": generation_result.prompt.text if generation_result.prompt else None,
+                "style": generation_result.prompt.style.value if generation_result.prompt else None,
+                "tempo": generation_result.prompt.tempo if generation_result.prompt else None,
+                "mood": generation_result.prompt.mood if generation_result.prompt else None,
+                "intensity": generation_result.prompt.intensity if generation_result.prompt else None
+            },
+            "emotion_context": {
+                "energy": emotion_data.energy,
+                "valence": emotion_data.valence,
+                "tension": emotion_data.tension,
+                "focus": emotion_data.focus,
+                "confidence": emotion_data.confidence
+            },
+            "file_info": {
+                "file_path": generation_result.file_path,
+                "file_url": generation_result.file_url,
+                "created_at": generation_result.created_at.isoformat(),
+                "completed_at": generation_result.completed_at.isoformat() if generation_result.completed_at else None
+            },
+            "metadata": generation_result.metadata,
+            "session_id": session_id
+        }
+
+        return response_data
+
+    except HTTPException:
+        # 이미 적절한 상태 코드와 메시지가 설정된 예외는 재발생
+        raise
+
+    except ValueError as e:
+        # 감정 데이터 검증 오류
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "INVALID_EMOTION_DATA",
+                "message": f"감정 데이터가 유효하지 않습니다: {str(e)}",
+                "details": {
+                    "validation_error": str(e)
+                }
+            }
+        )
+
+    except Exception as e:
+        # 예상치 못한 서버 오류
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "SIMPLE_MUSIC_GENERATION_FAILED",
+                "message": "간단 음악 생성 중 예상치 못한 오류가 발생했습니다.",
+                "details": {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                }
+            }
+        )
+
+
+@router.get(
+    "/{session_id}/generation/{generation_id}/status",
+    response_model=Dict[str, Any],
+    summary="음악 생성 상태 조회",
+    description="생성 중인 음악의 상태를 조회합니다.",
+    responses={
+        200: {
+            "description": "상태가 성공적으로 조회되었습니다."
+        },
+        404: {
+            "description": "생성 작업을 찾을 수 없음",
+            "model": ErrorResponse
+        },
+        500: {
+            "description": "서버 내부 오류",
+            "model": ErrorResponse
+        }
+    }
+)
+async def get_generation_status(
+    session_id: str,
+    generation_id: str,
+    session_token: Optional[str] = Depends(extract_session_token),
+    session_service: SessionService = Depends(get_session_service)
+) -> Dict[str, Any]:
+    """
+    음악 생성 상태 조회
+
+    Args:
+        session_id: 세션 ID (경로 파라미터)
+        generation_id: 생성 ID (경로 파라미터)
+        session_token: 세션 토큰 (Authorization 헤더에서 추출)
+        session_service: SessionService 의존성
+
+    Returns:
+        생성 상태 정보
+
+    Raises:
+        HTTPException: 인증 실패, 작업 없음, 서버 오류
+    """
+    try:
+        # 세션 접근 권한 검증
+        user_session = await verify_session_access(
+            session_id, session_token, session_service
+        )
+
+        # 생성 상태 조회
+        result = await music_service.get_generation_status(generation_id)
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "GENERATION_NOT_FOUND",
+                    "message": "생성 작업을 찾을 수 없습니다.",
+                    "details": {
+                        "generation_id": generation_id
+                    }
+                }
+            )
+
+        # 응답 데이터 구성
+        response_data = {
+            "generation_id": result.generation_id,
+            "status": result.status.value,
+            "file_path": result.file_path,
+            "file_url": result.file_url,
+            "created_at": result.created_at.isoformat(),
+            "completed_at": result.completed_at.isoformat() if result.completed_at else None,
+            "error_message": result.error_message,
+            "metadata": result.metadata
+        }
+
+        return response_data
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "STATUS_RETRIEVAL_FAILED",
+                "message": "상태 조회 중 오류가 발생했습니다.",
                 "details": {
                     "error_type": type(e).__name__,
                     "error_message": str(e)

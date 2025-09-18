@@ -17,7 +17,9 @@ import {
   GenerationProgress,
   LoadingSpinner,
   ErrorBoundary,
+  MusicPlayer,
 } from '../components';
+import { useMusicAPI } from '../hooks/useMusicAPI';
 import { colors, fonts, spacing, fontSizes, fontWeights, borderRadius, boxShadow } from '../styles/tokens';
 import {
   responsiveSpacing,
@@ -448,6 +450,30 @@ const MusicGenerationPage: React.FC<MusicGenerationPageProps> = ({
   const [sessionStartTime] = useState(new Date());
   const [generatedMusicCount, setGeneratedMusicCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedMusicId, setGeneratedMusicId] = useState<string | null>(null);
+
+  // useMusicAPI 훅 사용
+  const musicAPI = useMusicAPI({
+    sessionId: sessionId || `session-${sessionStartTime.getTime()}`,
+    onMusicUpdate: (musicInfo) => {
+      console.log('Music info updated:', musicInfo);
+    },
+    onError: (error) => {
+      console.error('Music API error:', error);
+      if (onError) {
+        onError(new Error(error));
+      }
+    }
+  });
+
+  // 컴포넌트 언마운트 시 폴링 정리
+  useEffect(() => {
+    return () => {
+      if (musicAPI.isPolling) {
+        musicAPI.stopPolling();
+      }
+    };
+  }, [musicAPI]);
 
   // 타이핑 데이터 처리
   const handleTypingData = useCallback((data: any) => {
@@ -486,6 +512,12 @@ const MusicGenerationPage: React.FC<MusicGenerationPageProps> = ({
 
       setSessionState('completed');
       setGeneratedMusicCount(prev => prev + 1);
+      setGeneratedMusicId(musicId);
+
+      // 생성된 음악의 정보를 폴링으로 추적
+      if (musicId) {
+        musicAPI.startPolling(musicId);
+      }
 
       if (onMusicGenerated) {
         onMusicGenerated(musicId, { emotionData, typingData });
@@ -508,7 +540,13 @@ const MusicGenerationPage: React.FC<MusicGenerationPageProps> = ({
     setEmotionData(null);
     setGenerationState(null);
     setIsGenerating(false);
-  }, []);
+    setGeneratedMusicId(null);
+
+    // 폴링 중단
+    if (musicAPI.isPolling) {
+      musicAPI.stopPolling();
+    }
+  }, [musicAPI]);
 
   // 세션 정보 구성
   const sessionInfo = {
@@ -723,8 +761,29 @@ const MusicGenerationPage: React.FC<MusicGenerationPageProps> = ({
               </div>
             )}
 
+            {/* Music Player */}
+            {generatedMusicId && musicAPI.currentMusic && sessionState === 'completed' && (
+              <div className="panel" style={additionalStyles.panelStyles}>
+                <MusicPlayer
+                  musicId={generatedMusicId}
+                  sessionId={sessionInfo.id}
+                  title={`생성된 음악 #${generatedMusicCount}`}
+                  artistName="VibeMusic AI"
+                  albumName="감정 기반 AI 음악"
+                  duration={musicAPI.currentMusic.file_info?.duration || 0}
+                  size={additionalStyles.shouldShowMobileUI ? 'sm' : 'md'}
+                  onError={(error) => {
+                    console.error('Music player error:', error);
+                    if (onError) {
+                      onError(new Error(error));
+                    }
+                  }}
+                />
+              </div>
+            )}
+
             {/* Empty state for side panel */}
-            {!generationState && sessionState === 'idle' && (
+            {!generationState && !generatedMusicId && sessionState === 'idle' && (
               <div className="panel" style={{
                 ...additionalStyles.panelStyles,
                 ...additionalStyles.emptyStateStyles

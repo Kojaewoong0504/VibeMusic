@@ -1,224 +1,311 @@
+/**
+ * T005: WebSocket 실시간 통신 구현
+ * 타이핑 데이터 실시간 서버 전송 및 응답 처리
+ */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { WebSocketMessage, WebSocketConfig } from './types';
+import {
+  WebSocketMessage,
+  WebSocketConfig,
+  WebSocketConnectionState,
+  TypingMessage,
+  EmotionMessage,
+  HeartbeatMessage,
+  ConnectionMessage,
+  ErrorMessage,
+  ProcessedMessage
+} from './types';
 
-interface UseWebSocketOptions extends Partial<WebSocketConfig> {
-  autoConnect?: boolean;
+interface UseWebSocketOptions {
+  sessionId: string;
+  config?: Partial<WebSocketConfig>;
   onMessage?: (message: WebSocketMessage) => void;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
+  onConnectionChange?: (state: WebSocketConnectionState) => void;
   onError?: (error: Event) => void;
+  autoConnect?: boolean;
 }
 
 interface UseWebSocketReturn {
-  socket: WebSocket | null;
-  isConnected: boolean;
-  isConnecting: boolean;
-  error: string | null;
+  connectionState: WebSocketConnectionState;
   sendMessage: (message: WebSocketMessage) => boolean;
+  sendTypingData: (data: TypingMessage['data']) => boolean;
+  sendHeartbeat: () => boolean;
   connect: () => void;
   disconnect: () => void;
-  reconnect: () => void;
-  messageQueue: WebSocketMessage[];
+  isConnected: boolean;
+  lastError: string | null;
+  reconnectAttempts: number;
+  messagesReceived: number;
+  messagesSent: number;
 }
 
-export function useWebSocket(url: string, options: UseWebSocketOptions = {}): UseWebSocketReturn {
+const defaultConfig: WebSocketConfig = {
+  url: process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws',
+  reconnectInterval: 3000, // 3초
+  maxReconnectAttempts: 10,
+  heartbeatInterval: 30000, // 30초
+  connectionTimeout: 10000 // 10초
+};
+
+export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
   const {
-    autoConnect = true,
-    reconnectInterval = 3000,
-    maxReconnectAttempts = 5,
-    heartbeatInterval = 30000,
+    sessionId,
+    config = {},
     onMessage,
-    onConnect,
-    onDisconnect,
-    onError
+    onConnectionChange,
+    onError,
+    autoConnect = true
   } = options;
+  const finalConfig = { ...defaultConfig, ...config };
 
-  const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [messageQueue, setMessageQueue] = useState<WebSocketMessage[]>([]);
+  // 상태 관리
+  const [connectionState, setConnectionState] = useState<WebSocketConnectionState>(
+    WebSocketConnectionState.DISCONNECTED
+  );
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [messagesReceived, setMessagesReceived] = useState(0);
+  const [messagesSent, setMessagesSent] = useState(0);
 
-  const reconnectAttemptsRef = useRef(0);
+  // 내부 레퍼런스
+  const wsRef = useRef<WebSocket | null>(null);
+
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const messageQueueRef = useRef<WebSocketMessage[]>([]);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isManuallyClosedRef = useRef(false);
 
-  // 메시지 큐 동기화
-  useEffect(() => {
-    messageQueueRef.current = messageQueue;
-  }, [messageQueue]);
+  // 연결 상태 변경 핸들러
+  const updateConnectionState = useCallback((newState: WebSocketConnectionState) => {
+    setConnectionState(newState);
+    onConnectionChange?.(newState);
+  }, [onConnectionChange]);
 
-  // 하트비트 전송
-  const sendHeartbeat = useCallback(() => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      const heartbeatMessage: WebSocketMessage = {
-        type: 'session',
-        data: { action: 'ping' },
-        timestamp: Date.now()
-      };
-      socket.send(JSON.stringify(heartbeatMessage));
-    }
-  }, [socket]);
-
-  // 하트비트 인터벌 시작
-  const startHeartbeat = useCallback(() => {
+  // 하트비트 설정
+  const setupHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
     }
-    if (heartbeatInterval > 0) {
-      heartbeatIntervalRef.current = setInterval(sendHeartbeat, heartbeatInterval);
-    }
-  }, [sendHeartbeat, heartbeatInterval]);
 
-  // 하트비트 인터벌 중지
-  const stopHeartbeat = useCallback(() => {
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        const heartbeatMessage: HeartbeatMessage = {
+          type: 'heartbeat',
+          session_id: sessionId
+        };
+
+        try {
+          wsRef.current.send(JSON.stringify(heartbeatMessage));
+          console.log('💓 Heartbeat sent');
+        } catch (error) {
+          console.error('Heartbeat 전송 실패:', error);
+        }
+      }
+    }, finalConfig.heartbeatInterval);
+  }, [sessionId, finalConfig.heartbeatInterval]);
+
+  // 하트비트 정리
+  const clearHeartbeat = useCallback(() => {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
   }, []);
 
-  // 큐에 저장된 메시지 전송
-  const flushMessageQueue = useCallback(() => {
-    if (socket && socket.readyState === WebSocket.OPEN && messageQueueRef.current.length > 0) {
-      messageQueueRef.current.forEach(message => {
-        socket.send(JSON.stringify(message));
-      });
-      setMessageQueue([]);
-      messageQueueRef.current = [];
+  // 연결 타임아웃 설정
+  const setupConnectionTimeout = useCallback(() => {
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
     }
-  }, [socket]);
 
-  // 재연결 로직
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-      reconnectAttemptsRef.current += 1;
+    connectionTimeoutRef.current = setTimeout(() => {
+      if (connectionState === WebSocketConnectionState.CONNECTING) {
+        console.error('WebSocket 연결 타임아웃');
+        setLastError('연결 타임아웃');
+        updateConnectionState(WebSocketConnectionState.ERROR);
 
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
       }
+    }, finalConfig.connectionTimeout);
+  }, [connectionState, finalConfig.connectionTimeout, updateConnectionState]);
 
-      const delay = reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1); // Exponential backoff
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, delay);
+  // 연결 타임아웃 정리
+  const clearConnectionTimeout = useCallback(() => {
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
     }
-  }, [maxReconnectAttempts, reconnectInterval]);
+  }, []);
 
   // WebSocket 연결
   const connect = useCallback(() => {
-    if (socket && socket.readyState === WebSocket.CONNECTING) {
-      return; // 이미 연결 시도 중
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('이미 연결되어 있습니다');
+      return;
     }
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      return; // 이미 연결됨
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+      console.log('연결 중입니다');
+      return;
     }
 
-    setIsConnecting(true);
-    setError(null);
+    console.log('🔌 WebSocket 연결 시작:', `${finalConfig.url}/typing/${sessionId}`);
+    updateConnectionState(WebSocketConnectionState.CONNECTING);
+    setupConnectionTimeout();
+    isManuallyClosedRef.current = false;
 
     try {
-      const ws = new WebSocket(url);
+      wsRef.current = new WebSocket(`${finalConfig.url}/typing/${sessionId}`);
 
-      ws.onopen = () => {
-        setIsConnected(true);
-        setIsConnecting(false);
-        setError(null);
-        reconnectAttemptsRef.current = 0;
-
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-
-        startHeartbeat();
-        flushMessageQueue();
-        onConnect?.();
+      wsRef.current.onopen = (event) => {
+        console.log('✅ WebSocket 연결 성공');
+        clearConnectionTimeout();
+        updateConnectionState(WebSocketConnectionState.CONNECTED);
+        setLastError(null);
+        setReconnectAttempts(0);
+        setupHeartbeat();
       };
 
-      ws.onmessage = (event) => {
+      wsRef.current.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
+          console.log('📨 메시지 수신:', message.type, message);
+
+          setMessagesReceived(prev => prev + 1);
           onMessage?.(message);
+
+          // 특정 메시지 타입별 처리
+          if (message.type === 'connection_established') {
+            console.log('🎉 연결 확인:', (message as ConnectionMessage).message);
+          } else if (message.type === 'error') {
+            console.error('❌ 서버 에러:', (message as ErrorMessage).message);
+            setLastError((message as ErrorMessage).message);
+          }
+
         } catch (error) {
-          console.error('WebSocket 메시지 파싱 오류:', error);
+          console.error('메시지 파싱 실패:', error);
+          setLastError('메시지 파싱 실패');
         }
       };
 
-      ws.onclose = (event) => {
-        setIsConnected(false);
-        setIsConnecting(false);
-        stopHeartbeat();
-
-        if (!event.wasClean) {
-          setError(`연결이 비정상적으로 종료됨: ${event.reason}`);
-          scheduleReconnect();
-        }
-
-        onDisconnect?.();
-      };
-
-      ws.onerror = (event) => {
-        setError('WebSocket 연결 오류');
-        setIsConnecting(false);
-        stopHeartbeat();
+      wsRef.current.onerror = (event) => {
+        console.error('❌ WebSocket 에러:', event);
+        setLastError('WebSocket 연결 오류');
+        updateConnectionState(WebSocketConnectionState.ERROR);
         onError?.(event);
       };
 
-      setSocket(ws);
+      wsRef.current.onclose = (event) => {
+        console.log('🔌 WebSocket 연결 종료:', event.code, event.reason);
+        clearHeartbeat();
+        clearConnectionTimeout();
+
+        if (isManuallyClosedRef.current) {
+          updateConnectionState(WebSocketConnectionState.DISCONNECTED);
+          return;
+        }
+
+        // 자동 재연결
+        if (reconnectAttempts < finalConfig.maxReconnectAttempts) {
+          console.log(`🔄 재연결 시도 ${reconnectAttempts + 1}/${finalConfig.maxReconnectAttempts}`);
+          updateConnectionState(WebSocketConnectionState.RECONNECTING);
+          setReconnectAttempts(prev => prev + 1);
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, finalConfig.reconnectInterval);
+        } else {
+          console.error('최대 재연결 시도 횟수 초과');
+          setLastError('최대 재연결 시도 횟수 초과');
+          updateConnectionState(WebSocketConnectionState.ERROR);
+        }
+      };
 
     } catch (error) {
-      setError(`연결 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-      setIsConnecting(false);
+      console.error('WebSocket 생성 실패:', error);
+      setLastError('WebSocket 생성 실패');
+      updateConnectionState(WebSocketConnectionState.ERROR);
     }
-  }, [url, onConnect, onMessage, onDisconnect, onError, startHeartbeat, flushMessageQueue, scheduleReconnect, stopHeartbeat]);
+  }, [
+    sessionId,
+    finalConfig,
+    reconnectAttempts,
+    updateConnectionState,
+    setupHeartbeat,
+    clearHeartbeat,
+    setupConnectionTimeout,
+    clearConnectionTimeout,
+    onMessage,
+    onError
+  ]);
 
   // WebSocket 연결 해제
   const disconnect = useCallback(() => {
+    console.log('🔌 WebSocket 연결 수동 해제');
+    isManuallyClosedRef.current = true;
+
+    // 타이머 정리
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
-    stopHeartbeat();
+    clearHeartbeat();
+    clearConnectionTimeout();
 
-    if (socket) {
-      socket.close(1000, '사용자가 연결을 종료함');
-      setSocket(null);
+    // WebSocket 연결 종료
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close(1000, '정상 종료');
+      }
+      wsRef.current = null;
     }
 
-    setIsConnected(false);
-    setIsConnecting(false);
-    reconnectAttemptsRef.current = 0;
-  }, [socket, stopHeartbeat]);
-
-  // 재연결
-  const reconnect = useCallback(() => {
-    disconnect();
-    setTimeout(connect, 100); // 짧은 지연 후 재연결
-  }, [disconnect, connect]);
+    updateConnectionState(WebSocketConnectionState.DISCONNECTED);
+    setReconnectAttempts(0);
+  }, [clearHeartbeat, clearConnectionTimeout, updateConnectionState]);
 
   // 메시지 전송
   const sendMessage = useCallback((message: WebSocketMessage): boolean => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      try {
-        socket.send(JSON.stringify(message));
-        return true;
-      } catch (error) {
-        console.error('메시지 전송 실패:', error);
-        return false;
-      }
-    } else {
-      // 연결되지 않은 경우 큐에 저장
-      setMessageQueue(prev => [...prev, message]);
-      messageQueueRef.current = [...messageQueueRef.current, message];
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket이 연결되지 않음');
       return false;
     }
-  }, [socket]);
 
-  // 자동 연결
+    try {
+      const messageString = JSON.stringify(message);
+      wsRef.current.send(messageString);
+      setMessagesSent(prev => prev + 1);
+      console.log('📤 메시지 전송:', message.type, message);
+      return true;
+    } catch (error) {
+      console.error('메시지 전송 실패:', error);
+      setLastError('메시지 전송 실패');
+      return false;
+    }
+  }, []);
+
+  // 타이핑 데이터 전송
+  const sendTypingData = useCallback((data: TypingMessage['data']): boolean => {
+    const message: TypingMessage = {
+      type: 'typing_data',
+      session_id: sessionId,
+      data
+    };
+    return sendMessage(message);
+  }, [sessionId, sendMessage]);
+
+  // 하트비트 전송
+  const sendHeartbeat = useCallback((): boolean => {
+    const message: HeartbeatMessage = {
+      type: 'heartbeat',
+      session_id: sessionId
+    };
+    return sendMessage(message);
+  }, [sessionId, sendMessage]);
+
+  // 컴포넌트 마운트 시 자동 연결
   useEffect(() => {
     if (autoConnect) {
       connect();
@@ -227,30 +314,26 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}): Us
     return () => {
       disconnect();
     };
-  }, [autoConnect]); // connect, disconnect 의존성 제거하여 무한 루프 방지
+  }, [sessionId]); // sessionId가 변경될 때만 재연결
 
-  // 컴포넌트 언마운트시 정리
+  // cleanup on unmount
   useEffect(() => {
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      stopHeartbeat();
-      if (socket) {
-        socket.close();
-      }
+      disconnect();
     };
-  }, []); // 빈 의존성 배열로 마운트/언마운트시에만 실행
+  }, [disconnect]);
 
   return {
-    socket,
-    isConnected,
-    isConnecting,
-    error,
+    connectionState,
     sendMessage,
+    sendTypingData,
+    sendHeartbeat,
     connect,
     disconnect,
-    reconnect,
-    messageQueue
+    isConnected: connectionState === WebSocketConnectionState.CONNECTED,
+    lastError,
+    reconnectAttempts,
+    messagesReceived,
+    messagesSent
   };
 }

@@ -1,9 +1,10 @@
 """
 애플리케이션 설정 관리
 """
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
@@ -73,6 +74,43 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
     
+    @field_validator('REDIS_HOST', mode='before')
+    @classmethod
+    def parse_redis_host(cls, v, info):
+        """REDIS_URL에서 호스트 추출"""
+        if hasattr(info.data, 'get') and info.data.get('REDIS_URL'):
+            redis_url = info.data.get('REDIS_URL')
+            if redis_url and redis_url != "redis://localhost:6379/0":
+                parsed = urlparse(redis_url)
+                return parsed.hostname or v
+        return v
+
+    @field_validator('REDIS_PORT', mode='before')
+    @classmethod
+    def parse_redis_port(cls, v, info):
+        """REDIS_URL에서 포트 추출"""
+        if hasattr(info.data, 'get') and info.data.get('REDIS_URL'):
+            redis_url = info.data.get('REDIS_URL')
+            if redis_url and redis_url != "redis://localhost:6379/0":
+                parsed = urlparse(redis_url)
+                return parsed.port or v
+        return v
+
+    @field_validator('REDIS_DB', mode='before')
+    @classmethod
+    def parse_redis_db(cls, v, info):
+        """REDIS_URL에서 DB 번호 추출"""
+        if hasattr(info.data, 'get') and info.data.get('REDIS_URL'):
+            redis_url = info.data.get('REDIS_URL')
+            if redis_url and redis_url != "redis://localhost:6379/0":
+                parsed = urlparse(redis_url)
+                if parsed.path and parsed.path.startswith('/'):
+                    try:
+                        return int(parsed.path[1:])
+                    except ValueError:
+                        pass
+        return v
+
     @property
     def database_url_sync(self) -> str:
         """동기 데이터베이스 URL (마이그레이션용)"""
